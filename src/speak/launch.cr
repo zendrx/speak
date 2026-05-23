@@ -38,10 +38,9 @@ module Speak
       load_conversation_history
     end
 
-    def load_system_prompt
-      prompt_path = "system_prompt.txt"
-      return File.read(prompt_path)
-    end 
+    def load_system_prompt : String
+      {{ read_file("#{__DIR__}/system_prompt.txt") }}
+    end
 
     # Starts the main chat loop.
     #
