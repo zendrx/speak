@@ -1,35 +1,44 @@
 require "llama"
-require "./system"
-require "./config"
+require "./speak/system"
+require "./speak/config"
+require "./speak/install"
+require "./speak/launch"
 
 def main
-config = Speak::Config.load_or_create
+  config = Speak::Config.load_or_create
+  settings = config.apply_overrides
 
-setting = config.apply_overrides
-
-model_path = "./speak/models/#{setting.model_file}"
-if File.exists?(model_path)
+  model_path = "./speak/models/#{settings.model_file}"
+  
+  model = if File.exists?(model_path)
     puts "Loading model: #{model_path}"
-    llama = Llama::Model.new(model_path, setting.model_quant)
-else
-    puts "Model file not found: #{model_path}, installing"
-    install = Speak::Install.new
-    install.install_model(setting.model_quant)
-     if File.exists?(model_path)
-        puts "Model installed successfully: #{model_path}"
-        model = Llama::Model.new(model_path)
-     else
-        puts "Failed to install model: #{model_path}"
-         exit(1)
-     end
-end
-context = Llama::Context.new(
-   model: model,
-   n_ctx: setting.context_size,
-   kv_cache_type: setting.kv_cache_type
-)
-launch = Speak::Launch.new(context, setting)
-launch.run
+    Llama::Model.new(model_path)
+  else
+    puts "Model file not found: #{model_path}, installing..."
+    installer = Speak::Install.new
+    installer.install_model(settings.model_quant)
+    
+    if File.exists?(model_path)
+      puts "Model installed successfully: #{model_path}"
+      Llama::Model.new(model_path)
+    else
+      puts "Failed to install model: #{model_path}"
+      exit(1)
+    end
+  end
+
+  begin
+    context = Llama::Context.new(
+      model: model,
+      n_ctx: settings.context_size,
+      kv_cache_type: settings.kv_cache_type
+    )
+    launcher = Speak::Launch.new(context, settings)
+    launcher.run
+  rescue ex : Exception
+    puts "Error: #{ex.message}"
+    exit(1)
+  end
 end
 
 main
