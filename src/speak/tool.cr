@@ -4,46 +4,128 @@ require "uri"
 
 module Speak
   class Tool
-    MEMORY_DIR         = "./speak/memory"
-    MEMORY_FILE        = "./speak/memory/user.md"
-    SEARCH_TIMEOUT     = 30.seconds
+    MEMORY_DIR = "./speak/memory"
+    MEMORY_FILE = "./speak/memory/user.md"
+    SEARCH_TIMEOUT = 30.seconds
     MAX_SEARCH_RESULTS = 10
 
     @memory_cache : String?
+
+    TOOLS_SCHEMA = [
+      {
+        "type": "function",
+        "function": {
+          "name": "read_file",
+          "description": "Read the contents of a local file. Returns the file content as text.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "The file path to read (relative or absolute within current directory)"
+              }
+            },
+            "required": ["path"]
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "search_web",
+          "description": "Search the web for current information. Returns up to 10 results with titles, URLs, and snippets.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "description": "The search query to find information on the web"
+              }
+            },
+            "required": ["query"]
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "remember",
+          "description": "Store a fact about the user in long-term memory. This fact will be remembered across all future conversations.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "fact": {
+                "type": "string",
+                "description": "The fact to remember (e.g., 'User name is Sarah', 'User prefers short answers')"
+              }
+            },
+            "required": ["fact"]
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "finish",
+          "description": "Call this tool when you have completed the user's request and are ready to provide the final answer.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "final_answer": {
+                "type": "string",
+                "description": "The complete final answer to the user's request"
+              }
+            },
+            "required": ["final_answer"]
+          }
+        }
+      }
+    ]
 
     def initialize
       Dir.mkdir_p(MEMORY_DIR) unless Dir.exists?(MEMORY_DIR)
       ensure_memory_file_exists
     end
 
-    def process_tool_calls(response : String) : String
-      result = response.dup
+    def tools_schema : String
+      TOOLS_SCHEMA.to_json
+    end
 
-      if match = result.match(/<read>(.*?)<\/read>/m)
-        file_path = match[1].strip
-        file_content = read_file(file_path)
-        result = result.gsub(/<read>.*?<\/read>/m, file_content)
+    def process_tool_calls(response : String) : {handled: Bool, result: String}
+      tool_pattern = /<tool_call>\s*\{\s*"name":\s*"([^"]+)"\s*,\s*"arguments":\s*(\{[^}]+\})\s*\}\s*<\/tool_call>/
+      if match = tool_pattern.match(response)
+        tool_name = match[1].to_s
+        arguments_json = match[2].to_s
+        tool_result = execute_tool(tool_name, arguments_json)
+        return {handled: true, result: tool_result}
       end
+      {handled: false, result: response}
+    end
 
-      if match = result.match(/<memory>(.*?)<\/memory>/m)
-        memory_content = match[1].strip
-        write_to_memory(memory_content, append: false)
-        result = result.gsub(/<memory>.*?<\/memory>/m, "I've remembered that.")
+    def execute_tool(name : String, arguments_json : String) : String
+      begin
+        args = JSON.parse(arguments_json)
+        
+        case name
+        when "read_file"
+          path = args["path"].as_s
+          read_file(path)
+        when "search_web"
+          query = args["query"].as_s
+          web_search(query)
+        when "remember"
+          fact = args["fact"].as_s
+          write_to_memory(fact, append: true)
+          "I've remembered: #{fact}"
+        when "finish"
+          final_answer = args["final_answer"].as_s
+          "FINISH:#{final_answer}"
+        else
+          "Error: Unknown tool '#{name}'"
+        end
+      rescue ex
+        "Error executing tool #{name}: #{ex.message}"
       end
-
-      if match = result.match(/<memory append>(.*?)<\/memory append>/m)
-        memory_content = match[1].strip
-        write_to_memory(memory_content, append: true)
-        result = result.gsub(/<memory append>.*?<\/memory append>/m, "I've updated my memory.")
-      end
-
-      if match = result.match(/<search>(.*?)<\/search>/m)
-        query = match[1].strip
-        search_results = web_search(query)
-        result = result.gsub(/<search>.*?<\/search>/m, search_results)
-      end
-
-      result
     end
 
     def read_file(path : String) : String
@@ -89,8 +171,8 @@ module Speak
         client.connect_timeout = SEARCH_TIMEOUT
 
         response = client.get("/html/?q=#{encoded_query}", headers: HTTP::Headers{
-          "User-Agent"      => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          "Accept"          => "text/html,application/xhtml+xml",
+          "User-Agent" => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "Accept" => "text/html,application/xhtml+xml",
           "Accept-Language" => "en-US,en;q=0.9",
         })
 
@@ -178,24 +260,17 @@ module Speak
       @memory_cache = nil
     end
 
-    def append_fact(fact : String)
-      timestamp = Time.utc.to_s("%Y-%m-%d %H:%M:%S")
-      File.open(MEMORY_FILE, "a") do |file|
-        file.puts "\n[#{timestamp}] #{fact}"
-      end
-      @memory_cache = nil
-    end
-
     def memory_for_prompt : String
       memory = load_user_memory
       return "" if memory.empty?
 
       <<-MEMORY
-        ## Information I know about the user:
-        #{memory}
+## Information I know about the user:
+#{memory}
 
-        Note: This information was provided by the user in previous conversations.
-        To update this information, output <memory>new fact</memory> or <memory append>additional fact</memory append>.
+Note: This information was provided by the user in previous conversations.
+To update this information, use the remember tool.
+
       MEMORY
     end
 
