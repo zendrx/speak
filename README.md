@@ -9,7 +9,8 @@
 
 [![Crystal](https://img.shields.io/badge/Crystal-1.12-000000?logo=crystal)](https://crystal-lang.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Lines of Code](https://tokei.rs/b1/github/zendrx/speak?category=code)](https://github.com/zendrx/speak)
+[![CI](https://github.com/zendrx/speak/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/zendrx/speak/actions/workflows/ci.yml)
+[![Lines of Code](https://img.shields.io/badge/Lines%20of%20Code-1,133-blue?style=flat-square&logo=crystal)](https://github.com/zendrx/speak)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![Made with Crystal](https://img.shields.io/badge/Made%20with-Crystal-000000)](https://crystal-lang.org/)
 
