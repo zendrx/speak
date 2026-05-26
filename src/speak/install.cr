@@ -107,7 +107,7 @@ module Speak
 
       ENV["HF_ENDPOINT"] = "https://hf-mirror.com"
 
-      cmd = "bash #{HFD_PATH} #{repo_id} --include #{filename} --local-dir #{CACHE_DIR} --tool aria2c -x 16"
+      cmd = "bash #{HFD_PATH} #{repo_id} --include #{filename} --local-dir #{CACHE_DIR} --tool aria2c -x 10"
       system(cmd)
 
       unless File.exists?(File.join(CACHE_DIR, filename))
@@ -152,7 +152,7 @@ module Speak
 
               if total_size > 0
                 percent = (downloaded * 100 / total_size).to_i
-                elapsed = (Time.instant - start_time).total_seconds
+                elapsed = start_time.elapsed.total_seconds # thanks to @siji for suggesting this idiom
                 speed = elapsed > 0 ? (downloaded - existing_size).to_f / elapsed / (1024 * 1024) : 0
                 print "\rProgress: #{percent}% | #{format_bytes(downloaded.to_u64)} / #{format_bytes(total_size.to_u64)} | #{speed.round(1)} MB/s"
                 STDOUT.flush
