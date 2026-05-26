@@ -94,7 +94,7 @@ module Speak
     end
 
     private def setup_hfd
-      return if File.exists?(HFD_PATH) && File.executable?(HFD_PATH)
+      return if File.exists?(HFD_PATH) && File::Info.executable?(HFD_PATH)
 
       puts "Downloading hfd.sh..."
       system("wget -q -O #{HFD_PATH} #{HFD_SCRIPT_URL}")
@@ -107,7 +107,7 @@ module Speak
 
       ENV["HF_ENDPOINT"] = "https://hf-mirror.com"
 
-      cmd = "bash #{HFD_PATH} #{repo_id} --include #{filename} --local-dir #{CACHE_DIR} --tool aria2c -x 4"
+      cmd = "bash #{HFD_PATH} #{repo_id} --include #{filename} --local-dir #{CACHE_DIR} --tool aria2c -x 16"
       system(cmd)
 
       unless File.exists?(File.join(CACHE_DIR, filename))
@@ -143,7 +143,7 @@ module Speak
           File.open(dest_path, existing_size > 0 ? "ab" : "wb") do |file|
             buffer = Bytes.new(8192)
             downloaded = existing_size
-            start_time = Time.monotonic
+            start_time = Time.instant
 
             while bytes_read = response.body_io.read(buffer)
               break if bytes_read == 0
@@ -152,7 +152,7 @@ module Speak
 
               if total_size > 0
                 percent = (downloaded * 100 / total_size).to_i
-                elapsed = (Time.monotonic - start_time).total_seconds
+                elapsed = (Time.instant - start_time).total_seconds
                 speed = elapsed > 0 ? (downloaded - existing_size).to_f / elapsed / (1024 * 1024) : 0
                 print "\rProgress: #{percent}% | #{format_bytes(downloaded.to_u64)} / #{format_bytes(total_size.to_u64)} | #{speed.round(1)} MB/s"
                 STDOUT.flush
