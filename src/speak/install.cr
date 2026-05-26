@@ -107,7 +107,7 @@ module Speak
 
       ENV["HF_ENDPOINT"] = "https://hf-mirror.com"
 
-      cmd = "bash #{HFD_PATH} #{repo_id} --include #{filename} --local-dir #{CACHE_DIR} --tool aria2c -x 16"
+      cmd = "bash #{HFD_PATH} #{repo_id} --include #{filename} --local-dir #{CACHE_DIR} --tool aria2c -x 10"
       system(cmd)
 
       unless File.exists?(File.join(CACHE_DIR, filename))
