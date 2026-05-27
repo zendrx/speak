@@ -115,7 +115,7 @@ module Speak
       response = @context.generate(
         prompt,
         max_tokens: @settings.max_tokens,
-        temperature: @settings.temperature
+        temperature: @settings.temperature.to_f32
       )
 
       tokens = @vocab.tokenize(prompt)

@@ -23,20 +23,20 @@ def main
   if !File.exists?(CONFIG_PATH) || force_setup
     puts "speak - First time setup"
     puts "=" * 40
-    
+
     manager = Speak::ModelManager.new(use_case)
-    
+
     if auto_setup || force_setup
       success = manager.auto_setup
     else
       success = manager.setup
     end
-    
+
     unless success
       puts "Setup failed. Exiting."
       exit 1
     end
-    
+
     puts "\nSetup complete. Run ./speak again to start chatting."
     exit 0
   end
@@ -61,20 +61,20 @@ def main
 
   # Check if model file exists
   model_path = "./speak/models/#{settings.model_file}"
-  
+
   unless File.exists?(model_path)
     puts "Model file not found: #{model_path}"
     puts "Downloading model..."
-    
+
     installer = Speak::Install.new
     success = installer.install_model(settings.model_quant)
-    
+
     unless success && File.exists?(model_path)
       puts "Failed to download model. Please check your internet connection."
       puts "You can also download the model manually and place it in: #{model_path}"
       exit 1
     end
-    
+
     puts "Model downloaded successfully."
   end
 
@@ -84,18 +84,19 @@ def main
   # Load the model
   puts "Loading model..."
   model = Llama::Model.new(model_path, use_mmap: use_mmap)
-  
+
   # Create context
   context = Llama::Context.new(
     model: model,
-    n_ctx: settings.context_size
+    n_ctx: settings.context_size.to_u32,
+    n_threads: settings.cpu_cores.to_i,
   )
 
   # Launch chat interface
   puts "Starting chat interface..."
   puts "Type 'exit' to quit, 'help' for commands"
   puts "-" * 40
-  
+
   launcher = Speak::Launch.new(context, model, settings)
   launcher.run
 end

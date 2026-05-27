@@ -44,7 +44,7 @@ module Speak
   end
 
   class ModelManager
-    MODELS_JSON = {{ read_file("#{__DIR__}/models.json").chomp.stringify }}
+    MODELS_JSON = {{ read_file("#{__DIR__}/models.json").chomp }}
     CONFIG_PATH = "./speak/config.json"
 
     @registry : Array(ModelInfo)
@@ -83,31 +83,31 @@ module Speak
     # Write detected hardware to config.json
     def write_detected_to_config
       ensure_config_dir
-      
+
       # Create detected section
       detected = {
-        "total_ram_mb" => System.total_ram_mb,
-        "available_ram_mb" => System.available_ram_mb,
-        "os_reserved_ram_mb" => System.os_reserved_ram_mb
+        "total_ram_mb"       => System.total_ram_mb,
+        "available_ram_mb"   => System.available_ram_mb,
+        "os_reserved_ram_mb" => System.os_reserved_ram_mb,
       }
 
       # Create empty active section (to be filled later)
       active = {
-        "cpu_cores" => @cpu_cores,
-        "has_avx2" => @has_avx2,
+        "cpu_cores"          => @cpu_cores,
+        "has_avx2"           => @has_avx2,
         "free_disk_space_mb" => System.free_disk_space_mb("/"),
-        "context_size" => 2048,
-        "kv_cache_type" => "standard",
-        "model_quant" => "",
-        "model_file" => "",
-        "temperature" => 0.7,
-        "max_tokens" => 512,
-        "use_mmap" => true
+        "context_size"       => 2048,
+        "kv_cache_type"      => "standard",
+        "model_quant"        => "",
+        "model_file"         => "",
+        "temperature"        => 0.7,
+        "max_tokens"         => 512,
+        "use_mmap"           => true,
       }
 
       config = {
         "detected" => detected,
-        "active" => active
+        "active"   => active,
       }
 
       File.write(CONFIG_PATH, config.to_pretty_json)
@@ -123,11 +123,11 @@ module Speak
     private def calculate_fit_score(model : ModelInfo) : Float64
       headroom = @available_ram_gb - model.weight_gb
       if headroom <= 0
-        return 0.0
+        0.0
       elsif headroom >= 2.0
-        return 1.0
+        1.0
       else
-        return headroom / 2.0
+        headroom / 2.0
       end
     end
 
@@ -148,11 +148,11 @@ module Speak
     # Score a model for the user's use case
     private def score_for_use_case(model : ModelInfo) : Float64
       if model.use_cases.includes?(@use_case)
-        return 1.0
+        1.0
       elsif model.use_cases.includes?("general") || model.use_cases.includes?("chat")
-        return 0.6
+        0.6
       else
-        return 0.3
+        0.3
       end
     end
 
@@ -191,7 +191,7 @@ module Speak
     # Display models to user and get selection
     def interactive_selection : ModelInfo?
       recommendations = get_recommendations(8)
-      
+
       if recommendations.empty?
         puts "No models found that fit your system"
         puts "Available RAM: #{@available_ram_gb.round(1)} GB"
@@ -217,7 +217,7 @@ module Speak
         model = rec.model
         quality_stars = "★" * (model.quality_score / 20).to_i + "☆" * (5 - (model.quality_score / 20).to_i)
         speed_stars = "★" * (model.speed_score / 20).to_i + "☆" * (5 - (model.speed_score / 20).to_i)
-        
+
         puts "#{i + 1}. #{model.name}"
         puts "   Size: #{model.weight_gb.round(1)} GB | Quality: #{quality_stars} | Speed: #{speed_stars}"
         puts "   Context: #{model.max_context_k} tokens"
@@ -228,7 +228,13 @@ module Speak
       end
 
       print "Select model [1-#{recommendations.size}] or 'a' for auto (best match): "
-      input = gets.chomp.strip
+      input = gets
+      if input
+        input = input.chomp.strip
+      else
+        puts "No input detected. Exiting."
+        exit 0
+      end
 
       if input.downcase == "a"
         best = recommendations.first
@@ -238,10 +244,10 @@ module Speak
 
       index = input.to_i - 1
       if index >= 0 && index < recommendations.size
-        return recommendations[index].model
+        recommendations[index].model
       else
         puts "Invalid selection. Please run again."
-        return nil
+        nil
       end
     end
 
@@ -255,36 +261,36 @@ module Speak
       begin
         config_data = File.read(CONFIG_PATH)
         config = JSON.parse(config_data)
-        
+
         # Calculate optimal context size based on available RAM
         max_context_by_ram = ((@available_ram_gb - model.weight_gb) / model.kv_per_1k_gb * 1000).to_i
         context_size = [model.max_context_k, max_context_by_ram].min
         context_size = [context_size, 512].max
-        
+
         # Update active section with selected model
-        config.as_h["active"] = {
-          "cpu_cores" => @cpu_cores,
-          "has_avx2" => @has_avx2,
-          "free_disk_space_mb" => System.free_disk_space_mb("/"),
-          "context_size" => context_size,
-          "kv_cache_type" => "standard",
-          "model_quant" => model.quantization,
-          "model_file" => model.filename,
-          "temperature" => 0.7,
-          "max_tokens" => 512,
-          "use_mmap" => true
+        active_hash = {
+          "cpu_cores"          => JSON::Any.new(@cpu_cores),
+          "has_avx2"           => JSON::Any.new(@has_avx2),
+          "free_disk_space_mb" => JSON::Any.new(System.free_disk_space_mb("/")),
+          "context_size"       => JSON::Any.new(context_size),
+          "kv_cache_type"      => JSON::Any.new("standard"),
+          "model_quant"        => JSON::Any.new(model.quantization),
+          "model_file"         => JSON::Any.new(model.filename),
+          "temperature"        => JSON::Any.new(0.7),
+          "max_tokens"         => JSON::Any.new(512),
+          "use_mmap"           => JSON::Any.new(true),
         }
-        
+        config.as_h["active"] = JSON::Any.new(active_hash)
         File.write(CONFIG_PATH, config.to_pretty_json)
         puts "\n Configuration saved to #{CONFIG_PATH}"
         puts "  Model: #{model.name}"
         puts "  Context size: #{context_size} tokens"
         puts "  File: #{model.filename}"
         puts "\nYou can now run ./speak"
-        return true
+        true
       rescue ex
         puts "Error updating config: #{ex.message}"
-        return false
+        false
       end
     end
 
@@ -293,21 +299,21 @@ module Speak
       puts "speak - First time setup"
       puts "=" * 40
       puts "Detecting hardware..."
-      
+
       # Write detected hardware to config
       write_detected_to_config
-      
+
       puts " Hardware detection complete"
       puts ""
-      
+
       # Let user pick a model
       model = interactive_selection
       if model
         write_model_to_config(model)
-        return true
+        true
       else
         puts "Setup failed. No model selected."
-        return false
+        false
       end
     end
 
@@ -316,20 +322,20 @@ module Speak
       puts "speak - Automatic setup"
       puts "=" * 40
       puts "Detecting hardware..."
-      
+
       write_detected_to_config
-      
+
       puts " Hardware detection complete"
       puts "Selecting best model for your system..."
-      
+
       model = auto_select
       if model
         puts "Selected: #{model.name}"
         write_model_to_config(model)
-        return true
+        true
       else
         puts "Setup failed. No compatible model found."
-        return false
+        false
       end
     end
   end

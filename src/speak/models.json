@@ -1,6 +1,4 @@
-{
-  "schema_version": "1.0.0",
-  "models": [
+[
     {
       "id": "nanbeige-4.1-3b-q4_k_m",
       "name": "Nanbeige 4.1 3B",
@@ -266,4 +264,3 @@
       "author": "IBM"
     }
   ]
-}

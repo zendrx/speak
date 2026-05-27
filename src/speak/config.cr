@@ -49,7 +49,7 @@ module Speak
     # Load config or return nil if not found
     def self.load?(path : String = "./speak/config.json") : Config?
       return nil unless File.exists?(path)
-      
+
       begin
         json = File.read(path)
         Config.from_json(json)

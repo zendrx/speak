@@ -47,7 +47,7 @@ module Speak
 
     def self.cpu_has_avx2 : Bool
       cpuinfo = File.read("/proc/cpuinfo")
-      if cpuinfo.include?("avx2")
+      if cpuinfo.includes?("avx2")
         return true
       end
       false
