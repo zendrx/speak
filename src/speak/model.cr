@@ -1,8 +1,8 @@
-# model.cr - Model registry and selection for speak
-# Handles displaying available models, user selection, and saving to config
+# model.cr - Model registry, hardware detection, and configuration for speak
 
 require "json"
 require "file_utils"
+require "./system"
 
 module Speak
   # Represents a single model in the registry
@@ -33,8 +33,6 @@ module Speak
 
   # Recommendation for a user
   struct ModelRecommendation
-    include JSON::Serializable
-
     property model : ModelInfo
     property fit_score : Float64
     property speed_score : Float64
@@ -46,17 +44,24 @@ module Speak
   end
 
   class ModelManager
-    # Models are embedded at compile time using read_file macro
     MODELS_JSON = {{ read_file("#{__DIR__}/models.json").chomp.stringify }}
+    CONFIG_PATH = "./speak/config.json"
 
     @registry : Array(ModelInfo)
     @available_ram_gb : Float64
     @total_ram_gb : Float64
+    @cpu_cores : Int32
+    @has_avx2 : Bool
+    @free_disk_gb : Float64
     @use_case : String
 
-    def initialize(available_ram_mb : UInt64, total_ram_mb : UInt64, use_case : String = "general")
-      @available_ram_gb = available_ram_mb.to_f / 1024.0
-      @total_ram_gb = total_ram_mb.to_f / 1024.0
+    def initialize(use_case : String = "general")
+      # Detect hardware using system.cr
+      @total_ram_gb = System.total_ram_mb.to_f / 1024.0
+      @available_ram_gb = System.available_ram_mb.to_f / 1024.0
+      @cpu_cores = System.cpu_cores
+      @has_avx2 = System.cpu_has_avx2
+      @free_disk_gb = System.free_disk_space_mb("/").to_f / 1024.0
       @use_case = use_case
       @registry = load_registry
     end
@@ -65,9 +70,48 @@ module Speak
     private def load_registry : Array(ModelInfo)
       Array(ModelInfo).from_json(MODELS_JSON)
     rescue ex
-      puts "Error loading embedded model registry: #{ex.message}"
-      puts "Falling back to empty registry"
+      puts "Error loading model registry: #{ex.message}"
       [] of ModelInfo
+    end
+
+    # Create config directory if it doesn't exist
+    private def ensure_config_dir
+      dir = File.dirname(CONFIG_PATH)
+      Dir.mkdir_p(dir) unless Dir.exists?(dir)
+    end
+
+    # Write detected hardware to config.json
+    def write_detected_to_config
+      ensure_config_dir
+      
+      # Create detected section
+      detected = {
+        "total_ram_mb" => System.total_ram_mb,
+        "available_ram_mb" => System.available_ram_mb,
+        "os_reserved_ram_mb" => System.os_reserved_ram_mb
+      }
+
+      # Create empty active section (to be filled later)
+      active = {
+        "cpu_cores" => @cpu_cores,
+        "has_avx2" => @has_avx2,
+        "free_disk_space_mb" => System.free_disk_space_mb("/"),
+        "context_size" => 2048,
+        "kv_cache_type" => "standard",
+        "model_quant" => "",
+        "model_file" => "",
+        "temperature" => 0.7,
+        "max_tokens" => 512,
+        "use_mmap" => true
+      }
+
+      config = {
+        "detected" => detected,
+        "active" => active
+      }
+
+      File.write(CONFIG_PATH, config.to_pretty_json)
+      puts "Hardware detection written to #{CONFIG_PATH}"
     end
 
     # Get models that fit in available RAM
@@ -135,21 +179,37 @@ module Speak
       recommendations.first(limit)
     end
 
+    # Auto-select the best model based on hardware
+    def auto_select : ModelInfo?
+      recommendations = get_recommendations(1)
+      if recommendations.size > 0
+        return recommendations.first.model
+      end
+      nil
+    end
+
     # Display models to user and get selection
     def interactive_selection : ModelInfo?
       recommendations = get_recommendations(8)
       
       if recommendations.empty?
-        puts "No models found that fit your system (available RAM: #{@available_ram_gb.round(1)} GB)"
-        puts "You can still try downloading a model manually to ./speak/models/"
+        puts "No models found that fit your system"
+        puts "Available RAM: #{@available_ram_gb.round(1)} GB"
+        puts "Total RAM: #{@total_ram_gb.round(1)} GB"
+        puts "Free disk space: #{@free_disk_gb.round(1)} GB"
+        puts "CPU cores: #{@cpu_cores}"
+        puts "AVX2 support: #{@has_avx2}"
         return nil
       end
 
       puts "\n" + "=" * 70
-      puts "Model Selection for speak"
+      puts "speak - Model Selection"
       puts "=" * 70
-      puts "Your system: #{@total_ram_gb.round(1)} GB total, #{@available_ram_gb.round(1)} GB available"
-      puts "Use case: #{@use_case}"
+      puts "Your system:"
+      puts "  RAM: #{@total_ram_gb.round(1)} GB total, #{@available_ram_gb.round(1)} GB available"
+      puts "  Disk: #{@free_disk_gb.round(1)} GB free"
+      puts "  CPU: #{@cpu_cores} cores, AVX2: #{@has_avx2 ? "Yes" : "No"}"
+      puts "  Use case: #{@use_case}"
       puts "-" * 70
       puts ""
 
@@ -160,6 +220,7 @@ module Speak
         
         puts "#{i + 1}. #{model.name}"
         puts "   Size: #{model.weight_gb.round(1)} GB | Quality: #{quality_stars} | Speed: #{speed_stars}"
+        puts "   Context: #{model.max_context_k} tokens"
         puts "   #{model.description}"
         puts "   Use cases: #{model.use_cases.join(", ")}"
         puts "   License: #{model.license} | Author: #{model.author}"
@@ -184,37 +245,90 @@ module Speak
       end
     end
 
-    # Save selected model to config
-    def save_to_config(model : ModelInfo, config_path : String = "./speak/config.json")
-      unless File.exists?(config_path)
-        puts "Config file not found. Run speak once to generate it first."
-        return false
+    # Write selected model to active section of config.json
+    def write_model_to_config(model : ModelInfo)
+      unless File.exists?(CONFIG_PATH)
+        puts "Config file not found. Writing detected hardware first..."
+        write_detected_to_config
       end
 
       begin
-        config_data = File.read(config_path)
+        config_data = File.read(CONFIG_PATH)
         config = JSON.parse(config_data)
         
-        # Update active settings with selected model
+        # Calculate optimal context size based on available RAM
+        max_context_by_ram = ((@available_ram_gb - model.weight_gb) / model.kv_per_1k_gb * 1000).to_i
+        context_size = [model.max_context_k, max_context_by_ram].min
+        context_size = [context_size, 512].max
+        
+        # Update active section with selected model
         config.as_h["active"] = {
-          "context_size" => [model.max_context_k, 4096].min,
+          "cpu_cores" => @cpu_cores,
+          "has_avx2" => @has_avx2,
+          "free_disk_space_mb" => System.free_disk_space_mb("/"),
+          "context_size" => context_size,
+          "kv_cache_type" => "standard",
           "model_quant" => model.quantization,
           "model_file" => model.filename,
           "temperature" => 0.7,
           "max_tokens" => 512,
-          "use_mmap" => true,
-          "cpu_cores" => config.as_h["active"]["cpu_cores"],
-          "has_avx2" => config.as_h["active"]["has_avx2"],
-          "free_disk_space_mb" => config.as_h["active"]["free_disk_space_mb"],
-          "kv_cache_type" => "standard"
+          "use_mmap" => true
         }
         
-        File.write(config_path, config.to_pretty_json)
-        puts "\nModel saved to config: #{model.name}"
-        puts "You can now run ./speak"
+        File.write(CONFIG_PATH, config.to_pretty_json)
+        puts "\n Configuration saved to #{CONFIG_PATH}"
+        puts "  Model: #{model.name}"
+        puts "  Context size: #{context_size} tokens"
+        puts "  File: #{model.filename}"
+        puts "\nYou can now run ./speak"
         return true
       rescue ex
         puts "Error updating config: #{ex.message}"
+        return false
+      end
+    end
+
+    # Full setup flow: detect hardware, let user pick model, write to config
+    def setup
+      puts "speak - First time setup"
+      puts "=" * 40
+      puts "Detecting hardware..."
+      
+      # Write detected hardware to config
+      write_detected_to_config
+      
+      puts " Hardware detection complete"
+      puts ""
+      
+      # Let user pick a model
+      model = interactive_selection
+      if model
+        write_model_to_config(model)
+        return true
+      else
+        puts "Setup failed. No model selected."
+        return false
+      end
+    end
+
+    # Quick setup: auto-select best model without user interaction
+    def auto_setup
+      puts "speak - Automatic setup"
+      puts "=" * 40
+      puts "Detecting hardware..."
+      
+      write_detected_to_config
+      
+      puts " Hardware detection complete"
+      puts "Selecting best model for your system..."
+      
+      model = auto_select
+      if model
+        puts "Selected: #{model.name}"
+        write_model_to_config(model)
+        return true
+      else
+        puts "Setup failed. No compatible model found."
         return false
       end
     end

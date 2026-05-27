@@ -9,6 +9,8 @@
 
 [![Crystal](https://img.shields.io/badge/Crystal-1.12-000000?logo=crystal)](https://crystal-lang.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Security Policy](https://img.shields.io/badge/Security-Policy-blue)](Security.md)
+[![Changelog](https://img.shields.io/badge/Change-Log-white)](Changelog.md)
 [![CI](https://github.com/zendrx/speak/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/zendrx/speak/actions/workflows/ci.yml)
 [![Lines of Code](https://img.shields.io/badge/Lines-1689-blue)](https://github.com/zendrx/speak)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
