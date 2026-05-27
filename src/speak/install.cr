@@ -152,7 +152,7 @@ module Speak
 
               if total_size > 0
                 percent = (downloaded * 100 / total_size).to_i
-                elapsed = (Time.instant - start_time).total_seconds
+                elapsed = start_time.elapsed.total_seconds # thanks to @sija for suggesting this idiom
                 speed = elapsed > 0 ? (downloaded - existing_size).to_f / elapsed / (1024 * 1024) : 0
                 print "\rProgress: #{percent}% | #{format_bytes(downloaded.to_u64)} / #{format_bytes(total_size.to_u64)} | #{speed.round(1)} MB/s"
                 STDOUT.flush
