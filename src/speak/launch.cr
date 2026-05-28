@@ -189,7 +189,18 @@ module Speak
     end
 
     private def load_system_prompt : String
-      {{ read_file("#{__DIR__}/system_prompt.txt") }}
+      runtime_prompt_path = "./speak/system_prompt"
+      default_prompt =  {{ read_file("#{__DIR__}/system_prompt.txt") }}
+      unless File.exists?(runtime_prompt_path)
+       # assuming the dir has been created and is writable, save the default prompt there
+        File.write(runtime_prompt_path, default_prompt)
+        puts "No system prompt found. Created default at #{runtime_prompt_path}"
+      end
+
+      File.read(runtime_prompt_path)
+    end
+
+
     end
 
     private def save_conversation_history

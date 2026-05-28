@@ -13,26 +13,55 @@ on:
 
 jobs:
   build:
-    name: Build and Release
-    runs-on: ubuntu-latest
+    name: Build Binaries
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset_name: speak-linux-x86_64
+            binary_name: speak-linux
+          - os: macos-latest
+            asset_name: speak-macos-x86_64
+            binary_name: speak-mac
 
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Crystal
+      uses: crystal-lang/setup-crystal@v1 # Fixed action name
+      with:
+        crystal: latest
+
+    # Only keep this step if you have a shard.yml file in your repo!
+    - name: Install dependencies
+      run: shards install 
+      continue-on-error: true 
+
+    - name: Build binary
+      run: crystal build src/speak.cr --release -o ${{ matrix.asset_name }}
+
+    - name: Upload artifact for release step
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.asset_name }}
+        path: ${{ matrix.asset_name }}
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
-    - name: Install Crystal
-      uses: crystal-lang/install-crystal@v1
-
-    - name: Install dependencies
-      run: shards install
-
-    - name: Build Linux binary
-      run: crystal build src/speak.cr --release -o speak-linux
-
-    - name: Build macOS binary
-      run: crystal build src/speak.cr --release --cross-compile --target x86_64-apple-darwin -o speak-mac
+    - name: Download all built binaries
+      uses: actions/download-artifact@v4
+      with:
+        merge-multiple: true  b  v
 
     - name: Setup Node for changelog
       uses: actions/setup-node@v4
@@ -45,7 +74,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Upload binaries to release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2 # Updated to v2
       with:
         tag_name: ${{ github.event.inputs.version }}
         files: |
