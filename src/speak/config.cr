@@ -10,7 +10,7 @@ module Speak
     property os_reserved_ram_mb : UInt64
   end
 
-  # Represents the active settings (read from config.json)
+  # Represents the active settings (read from config.json
   struct ActiveSettings
     include JSON::Serializable
 
