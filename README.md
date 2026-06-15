@@ -12,7 +12,7 @@
 [![Security Policy](https://img.shields.io/badge/Security-Policy-blue)](Security.md)
 [![Changelog](https://img.shields.io/badge/Change-Log-white)](Changelog.md)
 [![CI](https://github.com/zendrx/speak/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/zendrx/speak/actions/workflows/ci.yml)
-[![Lines of Code](https://img.shields.io/badge/Lines-1689-blue)](https://github.com/zendrx/speak)
+[![Lines of Code](https://img.shields.io/badge/Lines-846-blue)](https://github.com/zendrx/speak)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![Made with Crystal](https://img.shields.io/badge/Made%20with-Crystal-000000)](https://crystal-lang.org/)
 
@@ -28,8 +28,6 @@
 - [Requirements](#requirements)
 - [Usage](#usage)
 - [Configuration](#configuration)
-- [Architecture](#architecture)
-- [How speak saves RAM](#how-speak-saves-ram)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 - [License](#license)
@@ -52,14 +50,13 @@ It remembers who you are across sessions. It can read your files. It can search 
 |:--------|:----------------------|:------:|
 | 100% Local | Runs on your laptop. No data sent to anyone. | Yes |
 | Persistent Memory | Tell speak something once. It remembers forever. | Yes |
-| File Reading | "Read my config.json" - speak shows you the content. | Yes |
-| Web Search | "Search for latest news" - speak finds current information. | Yes |
+| File Reading | "Read my config.json" - speak shows you the content. | No |
+| Web Search | "Search for latest news" - speak finds current information. | No |
 | Low RAM Usage | Uses disk caching. Long conversations don't fill your memory. | Yes |
 | Hardware Detection | Auto-configures itself for your computer. | Yes |
 | Offline First | Works without internet. Web search is optional. | Yes |
 | Streaming Output | Tokens appear as they are generated. | Yes |
 | Agent Loop | Multi-step tool use (search, read, then answer). | Yes |
-| Disk KV Cache | Conversation state saved to SSD, not RAM. | Yes |
 | Resumable Downloads | Interrupted model downloads continue where they stopped. | Yes |
 
 ---
@@ -69,7 +66,7 @@ It remembers who you are across sessions. It can read your files. It can search 
 ### One-liner
 
 ```bash
-git clone https://github.com/zendrx/speak.git && cd speak && shards install && crystal build src/speak.cr --release -o speak && ./speak
+curl -fsSL https://raw.githubusercontent.com/zendrx/speak/refs/heads/master/install.sh | sh
 ```
 
 Step by step
@@ -121,11 +118,6 @@ Inside the chat, type these commands:
 | ---- | ---- |
 | exit or quit |  Save and quit |
 | clear | Clear the screen | 
-| history | Show conversation history | 
-| save | Save conversation manually | 
-| memory | Show what speak remembers about you | 
-| clearmemory | Clear all memories | 
-| reset | Reset working memory | 
 
 Example conversation
 
@@ -248,26 +240,6 @@ Edit src/speak/system_prompt.txt and recompile. The prompt is embedded at build 
 
 ---
 
-## Architecture
-
-System Flow
-
-```
-User Input
-    |
-    v
-[Launch] ---> [Agent Loop] ---> [Tool Calls]
-    |              |                  |
-    v              v                  v
-[Config]      [Memory]           [Tool Executor]
-    |              |                  |
-    v              v                  v
-[Model] <---- [Disk Cache] <---- [Web Search]
-    |
-    v
-Response
-```
-
 ## File Structure
 
 ```
@@ -299,35 +271,8 @@ RAM Tiers
 
 ---
 
-## How speak saves RAM
-
-speak uses two techniques to keep memory low:
-
-1. Memory Mapping (mmap)
-
-The model stays on disk. Only the parts needed are loaded into RAM. This reduces RAM usage from 2.5GB to under 500MB for the model.
-
-2. Disk KV Cache
-
-Conversation memory (KV cache) is saved to SSD, not RAM. Each turn extends the cache on disk, not in memory.
-
-```
-Without Disk Cache:  RAM usage grows with conversation length (2GB -> 8GB crash)
-With Disk Cache:     RAM usage stays flat (2GB for 10 turns or 10,000 turns)
-```
-
----
 
 ## Troubleshooting
-
-Unable to create dir ./speak
-
-Your binary is named speak and conflicts with the data directory. Rename the binary:
-
-```bash
-mv speak speak_app
-./speak_app
-```
 
 401 Unauthorized during download
 
@@ -392,12 +337,10 @@ MIT License. See LICENSE file for details.
 ## Credits
 
 | Project | Role | 
-| ---- | ---- | 
-|  **Crystal | Language** | 
-| **llama.cpp | Inference engine** | 
-| **llama.cr | Crystal bindings** | 
-| **Nanbeige | Model** | 
-| **ds4 | Disk cache inspiration** | 
+| ----- | ----- | 
+|  Crystal | Language | 
+| llama.cpp | Inference engine | 
+| ds4 | Disk cache inspiration | 
 
 ---
 
