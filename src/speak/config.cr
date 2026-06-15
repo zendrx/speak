@@ -18,12 +18,10 @@ module Speak
     property has_avx2 : Bool
     property free_disk_space_mb : UInt64
     property context_size : Int32
-    property kv_cache_type : String
     property model_quant : String
     property model_file : String
     property temperature : Float64
     property max_tokens : Int32
-    property use_mmap : Bool
   end
 
   # Configuration loader
@@ -33,7 +31,7 @@ module Speak
     property detected : DetectedRam
     property active : ActiveSettings
 
-    def initialize(@detected, @active)
+    def initialize(@active, @detected)
     end
 
     # Load config from JSON file
@@ -57,6 +55,10 @@ module Speak
         puts "Error loading config: #{ex.message}"
         nil
       end
+    end
+
+    def active : ActiveSettings
+      @active
     end
   end
 end
