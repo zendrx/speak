@@ -1,18 +1,11 @@
 require "http/client"
 require "json"
-require "tempfile"
 
 module Speak
   class Server
-    @[Embed("resources/bin/llama-server")]
-    LLAMA_SERVER_BIN : String
-
-    @process : Process?
+    @model_path : String?
     @port : String
     @settings : ActiveSettings
-    @memories : Array(String)
-    @memory_file : String
-    @temp_bin_path : String?
 
     def initialize
       @port = "8080"
@@ -20,53 +13,35 @@ module Speak
       @settings = config.active
       @memories = [] of String
       @memory_file = "./speak/memory.txt"
-      @temp_bin_path = nil
     end
 
     def start
       if running?
         puts "server is in an active state"
-        return
+      else
+        @model_path = "./speak/models/#{@settings.model_file}"
+        context_size = @settings.context_size
+        args = [
+          "-m", @model_path,
+          "--host", "127.0.0.1",
+          "--port", "8080",
+          "-c", context_size.to_s,
+          "--no-ui",
+        ].compact
+        @process = Process.new(
+          "llama-server",
+          args,
+          output: Process::Redirect::Inherit,
+          error: Process::Redirect::Inherit
+        )
+
+        wait_for_ready
       end
-
-      temp_bin = extract_binary
-      @model_path = "./speak/models/#{@settings.model_file}"
-      context_size = @settings.context_size
-
-      args = [
-        "-m", @model_path,
-        "--host", "127.0.0.1",
-        "--port", "8080",
-        "-c", context_size.to_s,
-        "--no-ui",
-      ].compact
-
-      @process = Process.new(
-        temp_bin,
-        args,
-        output: Process::Redirect::Inherit,
-        error: Process::Redirect::Inherit
-      )
-
-      wait_for_ready
-    end
-
-    private def extract_binary : String
-      temp_file = File.tempfile("llama-server", "bin")
-      temp_path = temp_file.path
-      temp_file.close
-
-      File.write(temp_path, LLAMA_SERVER_BIN, mode: "wb")
-      File.chmod(temp_path, 0o755)
-
-      @temp_bin_path = temp_path
-      temp_path
     end
 
     def wait_for_ready
       seconds = 60
       timeout = Time.monotonic + seconds.seconds
-
       while Time.monotonic < timeout
         begin
           response = HTTP::Client.get("http://localhost:#{@port}/health")
@@ -76,7 +51,6 @@ module Speak
         end
         sleep 0.5
       end
-
       raise "Server failed to start within #{seconds} seconds"
     end
 
@@ -84,7 +58,6 @@ module Speak
       if running?
         @process.try &.signal(Signal::TERM)
         @process.try &.wait
-        cleanup_temp_bin
       else
         puts "server not running"
       end
@@ -103,13 +76,11 @@ module Speak
           max_tokens:  "#{@settings.max_tokens}",
           stream:      false,
         }.to_json
-
         response = HTTP::Client.post(
           "http://127.0.0.1:8080/v1/chat/completions",
-          headers: HTTP::Headers{"Content-Type" => "application/json"},
+          headers: HTTP::Headers{"Content-Type" => "applications/json"},
           body: body
         )
-
         json = JSON.parse(response.body)
         content = json.dig("choices", 0, "message", "content").as_s
         call_tool(content)
@@ -122,7 +93,6 @@ module Speak
       lines = content.lines
       clean_lines = [] of String
       new_memories = [] of String
-
       lines.each do |line|
         if line.starts_with?("MEMORY:")
           memory = line[7..-1].strip
@@ -131,7 +101,6 @@ module Speak
           clean_lines << line
         end
       end
-
       new_memories.each { |m| add(m) }
       save if !new_memories.empty?
       clean_lines.join("\n").strip
@@ -146,15 +115,6 @@ module Speak
     def save
       Dir.mkdir_p(File.dirname(@memory_file))
       File.write(@memory_file, @memories.join("\n"))
-    end
-
-    private def cleanup_temp_bin
-      if path = @temp_bin_path
-        if File.exists?(path)
-          File.delete(path)
-        end
-        @temp_bin_path = nil
-      end
     end
   end
 end
