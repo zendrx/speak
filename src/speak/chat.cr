@@ -4,6 +4,7 @@ require "json"
 module Speak
   class Chat
     @system_prompt : String
+    @@running : Bool = true
     @settings : ActiveSettings
     @@history = [] of NamedTuple(role: String, content: String)
 
